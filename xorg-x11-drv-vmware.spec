@@ -1,18 +1,30 @@
 %define tarball xf86-video-vmware
 %define moduledir %(pkg-config xorg-server --variable=moduledir )
 %define driverdir	%{moduledir}/drivers
+%define gitdate 20120718
+%define gitversion e5ac80d8f
+
+%if 0%{?gitdate}
+%define gver .%{gitdate}git%{gitversion}
+%endif
 
 Summary:    Xorg X11 vmware video driver
 Name:	    xorg-x11-drv-vmware
-Version:    11.0.3
-Release:    1%{?dist}
+Version:    12.0.2
+Release:    3%{?gver}%{?dist}
 URL:	    http://www.x.org
 License:    MIT
 Group:	    User Interface/X Hardware Support
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
+%if 0%{?gitdate}
+Source0: %{tarball}-%{gitdate}.tar.bz2
+%else
 Source0:   ftp://ftp.x.org/pub/individual/driver/%{tarball}-%{version}.tar.bz2
+%endif
 Source1:    vmware.xinf
+
+Patch3:    vmware-12.0.1-vgahw.patch
 
 ExclusiveArch: %{ix86} x86_64 ia64
 
@@ -30,7 +42,8 @@ Requires:  Xorg %(xserver-sdk-abi-requires videodrv)
 X.Org X11 vmware video driver.
 
 %prep
-%setup -q -n %{tarball}-%{version}
+%setup -q -n %{tarball}-%{?gitdate:%{gitdate}}%{!?gitdate:%{version}}
+%patch3 -p1 -b .vgahw2
 
 %build
 %if 0%{?gitdate}
@@ -57,11 +70,19 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %{driverdir}/vmware_drv.so
-%{driverdir}/vmwlegacy_drv.so
 %{_datadir}/hwdata/videoaliases/vmware.xinf
 %{_mandir}/man4/vmware.4*
 
 %changelog
+* Tue Aug 29 2012 Jerome Glisse <jglisse@redhat.com> 12.0.2-3.20120718gite5ac80d8f
+- Resolves: #835263
+
+* Wed Aug 22 2012 airlied@redhat.com - 12.0.2-2.20120718gite5ac80d8f
+- rebuild for server ABI requires
+
+* Mon Aug 06 2012 Jerome Glisse <jglisse@redhat.com> 12.0.2-1.20120718gite5ac80d8f
+- snapshot latest git for api changes
+
 * Tue Jun 28 2011 Ben Skeggs <bskeggs@redhat.com> 11.0.3-1
 - upstream release 11.0.3
 
