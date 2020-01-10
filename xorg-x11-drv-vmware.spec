@@ -1,8 +1,8 @@
 %define tarball xf86-video-vmware
 %define moduledir %(pkg-config xorg-server --variable=moduledir )
 %define driverdir	%{moduledir}/drivers
-%define gitdate 20120718
-%define gitversion e5ac80d8f
+#define gitdate 20130109
+%define gitversion adf375f3
 
 %if 0%{?gitdate}
 %define gver .%{gitdate}git%{gitversion}
@@ -10,55 +10,55 @@
 
 Summary:    Xorg X11 vmware video driver
 Name:	    xorg-x11-drv-vmware
-Version:    12.0.2
-Release:    3%{?gver}%{?dist}
+Version:    13.0.1
+Release:    9%{?gver}%{?dist}
 URL:	    http://www.x.org
 License:    MIT
 Group:	    User Interface/X Hardware Support
-BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 %if 0%{?gitdate}
 Source0: %{tarball}-%{gitdate}.tar.bz2
 %else
 Source0:   ftp://ftp.x.org/pub/individual/driver/%{tarball}-%{version}.tar.bz2
 %endif
-Source1:    vmware.xinf
 
-Patch3:    vmware-12.0.1-vgahw.patch
+Patch0: vmware-13.0.1-xserver-1.15-compat.patch
+# http://cgit.freedesktop.org/xorg/driver/xf86-video-vmware/commit/?id=0a212afefd8670a1823c9b6474de8bf26d33bdeb
+# but with an extra fix to not mangle the stack
+Patch1: vmware-13.0.1-xv-fix.patch
 
 ExclusiveArch: %{ix86} x86_64 ia64
 
 %if 0%{?gitdate}
 BuildRequires: autoconf automake libtool
 %endif
-BuildRequires: xorg-x11-server-sdk >= 1.4.99.1
+BuildRequires: xorg-x11-server-devel >= 1.10.99.902
 BuildRequires: libdrm-devel pkgconfig(xext) pkgconfig(x11)
+#BuildRequires: mesa-libxatracker-devel >= 8.0.1-4
 
-Requires:  hwdata
-Requires:  Xorg %(xserver-sdk-abi-requires ansic)
-Requires:  Xorg %(xserver-sdk-abi-requires videodrv)
+Requires: Xorg %(xserver-sdk-abi-requires ansic)
+Requires: Xorg %(xserver-sdk-abi-requires videodrv)
+#Requires: libxatracker >= 8.0.1-4
 
 %description 
 X.Org X11 vmware video driver.
 
 %prep
 %setup -q -n %{tarball}-%{?gitdate:%{gitdate}}%{!?gitdate:%{version}}
-%patch3 -p1 -b .vgahw2
+%patch0 -p1 -b .compat
+%patch1 -p1 -b .jx
 
 %build
 %if 0%{?gitdate}
 autoreconf -v --install || exit 1
 %endif
 %configure --disable-static
-make
+make %{?_smp_mflags}
 
 %install
 rm -rf $RPM_BUILD_ROOT
 
 make install DESTDIR=$RPM_BUILD_ROOT
-
-mkdir -p $RPM_BUILD_ROOT%{_datadir}/hwdata/videoaliases
-install -m 0644 %{SOURCE1} $RPM_BUILD_ROOT%{_datadir}/hwdata/videoaliases/
 
 # FIXME: Remove all libtool archives (*.la) from modules directory.  This
 # should be fixed in upstream Makefile.am or whatever.
@@ -70,24 +70,120 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %{driverdir}/vmware_drv.so
-%{_datadir}/hwdata/videoaliases/vmware.xinf
 %{_mandir}/man4/vmware.4*
 
 %changelog
-* Tue Aug 29 2012 Jerome Glisse <jglisse@redhat.com> 12.0.2-3.20120718gite5ac80d8f
-- Resolves: #835263
+* Thu Aug 14 2014 Adam Jackson <ajax@redhat.com> 13.0.1-9
+- Fix bug with stalled Xv output
 
-* Wed Aug 22 2012 airlied@redhat.com - 12.0.2-2.20120718gite5ac80d8f
-- rebuild for server ABI requires
+* Wed Jan 15 2014 Adam Jackson <ajax@redhat.com> - 13.0.1-7
+- 1.15 ABI rebuild
 
-* Mon Aug 06 2012 Jerome Glisse <jglisse@redhat.com> 12.0.2-1.20120718gite5ac80d8f
+* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 13.0.1-6
+- Mass rebuild 2013-12-27
+
+* Wed Nov 06 2013 Adam Jackson <ajax@redhat.com> - 13.0.1-5
+- 1.15RC1 ABI rebuild
+
+* Fri Oct 25 2013 Adam Jackson <ajax@redhat.com> - 13.0.1-4
+- ABI rebuild
+
+* Thu Oct 24 2013 Adam Jackson <ajax@redhat.com> 13.0.1-3
+- xserver 1.15 API compat
+
+* Sun Aug 04 2013 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 13.0.1-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_20_Mass_Rebuild
+
+* Tue Apr 23 2013 Peter Hutterer <peter.hutterer@redhat.com> 13.0.1-1
+- vmware 13.0.1
+
+* Thu Mar 07 2013 Peter Hutterer <peter.hutterer@redhat.com> - 12.0.99.901-5.20130109gitadf375f3
+- require xorg-x11-server-devel, not -sdk
+
+* Thu Mar 07 2013 Peter Hutterer <peter.hutterer@redhat.com> - 12.0.99.901-4.20130109gitadf375f3
+- ABI rebuild
+
+* Fri Feb 15 2013 Peter Hutterer <peter.hutterer@redhat.com> - 12.0.99.901-3.20130109gitadf375f3
+- ABI rebuild
+
+* Fri Feb 15 2013 Peter Hutterer <peter.hutterer@redhat.com> - 12.0.99.901-2.20130109gitadf375f3
+- ABI rebuild
+
+* Wed Jan 09 2013 Adam Jackson <ajax@redhat.com> 12.0.99.901-1
+- vmware 12.0.99.901
+
+* Sun Jul 22 2012 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 12.0.2-3.20120718gite5ac80d8f
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_18_Mass_Rebuild
+
+* Wed Jul 18 2012 Dave Airlie <airlied@redhat.com> 12.0.2-1.20120718gite5ac80d8f
 - snapshot latest git for api changes
 
-* Tue Jun 28 2011 Ben Skeggs <bskeggs@redhat.com> 11.0.3-1
-- upstream release 11.0.3
+* Fri Apr 20 2012 Adam Jackson <ajax@redhat.com> 12.0.2-1
+- vmware 12.0.2
 
-* Mon Nov 30 2009 Dennis Gregorovic <dgregor@redhat.com> - 10.16.7-2.1
-- Rebuilt for RHEL 6
+* Mon Mar 19 2012 Adam Jackson <ajax@redhat.com> 12.0.1-2
+- vmware-12.0.1-vgahw.patch: Fix a different crash at start (#782995)
+- vmware-12.0.1-git.patch: Backport a garbage-free fix from git.
+
+* Thu Mar 15 2012 Dave Airlie <airlied@redhat.com> 12.0.1-1
+- update to latest upstream release
+
+* Mon Mar 12 2012 Adam Jackson <ajax@redhat.com> 11.0.3-14
+- vmware-11.0.3-vgahw.patch: Fix crash at start. (#801546)
+
+* Sat Feb 11 2012 Peter Hutterer <peter.hutterer@redhat.com> - 11.0.3-13
+- ABI rebuild
+
+* Fri Feb 10 2012 Peter Hutterer <peter.hutterer@redhat.com> - 11.0.3-12
+- ABI rebuild
+
+* Tue Jan 24 2012 Peter Hutterer <peter.hutterer@redhat.com> - 11.0.3-11
+- ABI rebuild
+
+* Wed Jan 04 2012 Peter Hutterer <peter.hutterer@redhat.com> - 11.0.3-10
+- Rebuild for server 1.12
+
+* Fri Dec 16 2011 Adam Jackson <ajax@redhat.com> - 11.0.3-9
+- Drop xinf file
+
+* Wed Nov 16 2011 Adam Jackson <ajax@redhat.com> 11.0.3-8
+- ABI rebuild
+- vmware-11.0.3-abi12.patch: Compensate for videoabi 12.
+- vmware-11.0.3-unbreak-xinerama.patch: Unbreak swapped dispatch in the
+  fake-xinerama code.
+
+* Wed Nov 09 2011 ajax <ajax@redhat.com> - 11.0.3-7
+- ABI rebuild
+
+* Thu Aug 18 2011 Adam Jackson <ajax@redhat.com> - 11.0.3-6
+- Rebuild for xserver 1.11 ABI
+
+* Wed May 11 2011 Peter Hutterer <peter.hutterer@redhat.com> - 11.0.3-5
+- Rebuild for server 1.11
+
+* Mon Feb 28 2011 Peter Hutterer <peter.hutterer@redhat.com> - 11.0.3-4
+- Rebuild for server 1.10
+
+* Tue Feb 08 2011 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 11.0.3-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_15_Mass_Rebuild
+
+* Thu Dec 02 2010 Peter Hutterer <peter.hutterer@redhat.com> - 11.0.3-2
+- Rebuild for server 1.10
+
+* Tue Nov 09 2010 Adam Jackson <ajax@redhat.com> 11.0.3-1
+- vmware 11.0.3
+
+* Wed Oct 27 2010 Adam Jackson <ajax@redhat.com> 11.0.1-2
+- Add ABI requires magic (#542742)
+
+* Tue Aug 10 2010 Dave Airlie <airlied@redhat.com> 11.0.1-1
+- Latest upstream release.
+
+* Mon Jul 05 2010 Peter Hutterer <peter.hutterer@redhat.com> - 10.16.7-4
+- rebuild for X Server 1.9
+
+* Thu Jan 21 2010 Peter Hutterer <peter.hutterer@redhat.com> - 10.16.7-3
+- Rebuild for server 1.8
 
 * Fri Aug 07 2009 Adam Jackson <ajax@redhat.com> 10.16.7-2
 - fix for symbol list removal.
