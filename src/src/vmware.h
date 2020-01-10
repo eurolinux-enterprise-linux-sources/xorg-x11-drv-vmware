@@ -1,9 +1,7 @@
 /* **********************************************************
  * Copyright (C) 1998-2001 VMware, Inc.
  * All Rights Reserved
- * Id: vmware.h,v 1.6 2001/01/30 18:13:47 bennett Exp $
  * **********************************************************/
-/* $XFree86: xc/programs/Xserver/hw/xfree86/drivers/vmware/vmware.h,v 1.11 2003/04/13 18:09:27 dawes Exp $ */
 
 #ifndef VMWARE_H
 #define VMWARE_H
@@ -19,12 +17,14 @@
 
 #include "xf86.h"
 #include "xf86_OSproc.h"
-#include "xf86Resources.h"
+
 
 #include <X11/extensions/panoramiXproto.h>
 
 #ifdef XSERVER_LIBPCIACCESS
 #include <pciaccess.h>
+#else
+#include "xf86Resources.h"
 #endif
 
 #include "compiler.h"	        /* inb/outb */
@@ -130,6 +130,7 @@ typedef struct {
     CARD32* vmwareFIFO;
 
     xf86CursorInfoPtr CursorInfoRec;
+    CursorPtr oldCurs;
     struct {
         int bg, fg, x, y;
         int hotX, hotY;
@@ -202,7 +203,7 @@ static __inline ScrnInfoPtr infoFromScreen(ScreenPtr s) {
 /*#define DEBUG_LOGGING*/
 #ifdef DEBUG_LOGGING
 # define VmwareLog(args) ErrorF args
-# define TRACEPOINT VmwareLog((__FUNCTION__ ":" __FILE__ "\n"));
+# define TRACEPOINT VmwareLog(("%s : %s\n", __FUNCTION__, __FILE__));
 #else
 # define VmwareLog(args)
 # define TRACEPOINT

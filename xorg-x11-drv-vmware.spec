@@ -4,8 +4,8 @@
 
 Summary:    Xorg X11 vmware video driver
 Name:	    xorg-x11-drv-vmware
-Version:    10.16.7
-Release:    2.1%{?dist}
+Version:    11.0.3
+Release:    1%{?dist}
 URL:	    http://www.x.org
 License:    MIT
 Group:	    User Interface/X Hardware Support
@@ -13,8 +13,6 @@ BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 Source0:   ftp://ftp.x.org/pub/individual/driver/%{tarball}-%{version}.tar.bz2
 Source1:    vmware.xinf
-Patch0: abi.patch
-Patch1: abi2.patch
 
 ExclusiveArch: %{ix86} x86_64 ia64
 
@@ -22,17 +20,17 @@ ExclusiveArch: %{ix86} x86_64 ia64
 BuildRequires: autoconf automake libtool
 %endif
 BuildRequires: xorg-x11-server-sdk >= 1.4.99.1
+BuildRequires: libdrm-devel pkgconfig(xext) pkgconfig(x11)
 
 Requires:  hwdata
-Requires:  xorg-x11-server-Xorg >= 1.4.99.1
+Requires:  Xorg %(xserver-sdk-abi-requires ansic)
+Requires:  Xorg %(xserver-sdk-abi-requires videodrv)
 
 %description 
 X.Org X11 vmware video driver.
 
 %prep
 %setup -q -n %{tarball}-%{version}
-%patch0 -p1 -b .abi
-%patch1 -p1 -b .abi2
 
 %build
 %if 0%{?gitdate}
@@ -59,10 +57,14 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %{driverdir}/vmware_drv.so
+%{driverdir}/vmwlegacy_drv.so
 %{_datadir}/hwdata/videoaliases/vmware.xinf
 %{_mandir}/man4/vmware.4*
 
 %changelog
+* Tue Jun 28 2011 Ben Skeggs <bskeggs@redhat.com> 11.0.3-1
+- upstream release 11.0.3
+
 * Mon Nov 30 2009 Dennis Gregorovic <dgregor@redhat.com> - 10.16.7-2.1
 - Rebuilt for RHEL 6
 
