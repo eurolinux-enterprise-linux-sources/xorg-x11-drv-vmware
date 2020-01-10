@@ -10,8 +10,8 @@
 
 Summary:    Xorg X11 vmware video driver
 Name:	    xorg-x11-drv-vmware
-Version:    13.0.1
-Release:    9%{?gver}%{?dist}
+Version:    13.1.0
+Release:    2%{?gver}%{?dist}
 URL:	    http://www.x.org
 License:    MIT
 Group:	    User Interface/X Hardware Support
@@ -22,11 +22,6 @@ Source0: %{tarball}-%{gitdate}.tar.bz2
 Source0:   ftp://ftp.x.org/pub/individual/driver/%{tarball}-%{version}.tar.bz2
 %endif
 
-Patch0: vmware-13.0.1-xserver-1.15-compat.patch
-# http://cgit.freedesktop.org/xorg/driver/xf86-video-vmware/commit/?id=0a212afefd8670a1823c9b6474de8bf26d33bdeb
-# but with an extra fix to not mangle the stack
-Patch1: vmware-13.0.1-xv-fix.patch
-
 ExclusiveArch: %{ix86} x86_64 ia64
 
 %if 0%{?gitdate}
@@ -34,19 +29,17 @@ BuildRequires: autoconf automake libtool
 %endif
 BuildRequires: xorg-x11-server-devel >= 1.10.99.902
 BuildRequires: libdrm-devel pkgconfig(xext) pkgconfig(x11)
-#BuildRequires: mesa-libxatracker-devel >= 8.0.1-4
+BuildRequires: mesa-libxatracker-devel >= 8.0.1-4
 
 Requires: Xorg %(xserver-sdk-abi-requires ansic)
 Requires: Xorg %(xserver-sdk-abi-requires videodrv)
-#Requires: libxatracker >= 8.0.1-4
+Requires: libxatracker >= 8.0.1-4
 
 %description 
 X.Org X11 vmware video driver.
 
 %prep
 %setup -q -n %{tarball}-%{?gitdate:%{gitdate}}%{!?gitdate:%{version}}
-%patch0 -p1 -b .compat
-%patch1 -p1 -b .jx
 
 %build
 %if 0%{?gitdate}
@@ -73,6 +66,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man4/vmware.4*
 
 %changelog
+* Sun Dec 13 2015 Dave Airlie <airlied@redhat.com> 13.1.0-2
+- rebase onto new mesa.
+
+* Wed Nov 11 2015 Adam Jackson <ajax@redhat.com> 13.1.0-1
+- vmware 13.1.0
+
 * Thu Aug 14 2014 Adam Jackson <ajax@redhat.com> 13.0.1-9
 - Fix bug with stalled Xv output
 
