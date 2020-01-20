@@ -1,17 +1,19 @@
-%define tarball xf86-video-vmware
-%define moduledir %(pkg-config xorg-server --variable=moduledir )
-%define driverdir	%{moduledir}/drivers
-%define gitdate 20150211
-%define gitversion 8f0cf7c
+%global tarball xf86-video-vmware
+%global moduledir %(pkg-config xorg-server --variable=moduledir )
+%global driverdir	%{moduledir}/drivers
+#global gitdate 20150211
+#global gitversion 8f0cf7c
+
+%undefine _hardened_build
 
 %if 0%{?gitdate}
-%define gver .%{gitdate}git%{gitversion}
+%global gver .%{gitdate}git%{gitversion}
 %endif
 
 Summary:    Xorg X11 vmware video driver
 Name:	    xorg-x11-drv-vmware
-Version:    13.0.2
-Release:    7%{?gver}%{?dist}
+Version:    13.2.1
+Release:    1%{?gver}%{?dist}.1
 URL:	    http://www.x.org
 License:    MIT
 Group:	    User Interface/X Hardware Support
@@ -22,14 +24,15 @@ Source0: %{tarball}-%{gitdate}.tar.bz2
 Source0:   ftp://ftp.x.org/pub/individual/driver/%{tarball}-%{version}.tar.bz2
 %endif
 
+Patch0: 0001-saa-Build-compatibility-with-xserver-1.20.patch
+
 ExclusiveArch: %{ix86} x86_64 ia64
 
-%if 0%{?gitdate}
 BuildRequires: autoconf automake libtool
-%endif
 BuildRequires: xorg-x11-server-devel >= 1.10.99.902
 BuildRequires: libdrm-devel pkgconfig(xext) pkgconfig(x11)
-BuildRequires: mesa-libxatracker-devel >= 10.2.5-3
+BuildRequires: mesa-libxatracker-devel >= 8.0.1-4
+BuildRequires: systemd-devel
 
 Requires: Xorg %(xserver-sdk-abi-requires ansic)
 Requires: Xorg %(xserver-sdk-abi-requires videodrv)
@@ -38,12 +41,10 @@ Requires: Xorg %(xserver-sdk-abi-requires videodrv)
 X.Org X11 vmware video driver.
 
 %prep
-%setup -q -n %{tarball}-%{?gitdate:%{gitdate}}%{!?gitdate:%{version}}
+%autosetup -n %{tarball}-%{?gitdate:%{gitdate}}%{!?gitdate:%{version}} -p1
 
 %build
-%if 0%{?gitdate}
 autoreconf -v --install || exit 1
-%endif
 %configure --disable-static
 make %{?_smp_mflags}
 
@@ -59,6 +60,31 @@ find $RPM_BUILD_ROOT -regex ".*\.la$" | xargs rm -f --
 %{_mandir}/man4/vmware.4*
 
 %changelog
+* Wed May 30 2018 Adam Jackson <ajax@redhat.com> - 13.2.1-1.1
+- Rebuild for xserver 1.20
+
+* Mon Jan  9 2017 Hans de Goede <hdegoede@redhat.com> - 13.2.1-1
+- New upstream bug-fix release 13.2.1
+
+* Thu Sep 29 2016 Hans de Goede <hdegoede@redhat.com> - 13.0.2-12.20150211git8f0cf7c
+- Add patches from upstream for use with xserver-1.19
+- Rebuild against xserver-1.19
+
+* Fri Feb 05 2016 Fedora Release Engineering <releng@fedoraproject.org> - 13.0.2-11.20150211git8f0cf7c
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_24_Mass_Rebuild
+
+* Wed Jan 20 2016 Peter Hutterer <peter.hutterer@redhat.com>
+- s/define/global/
+
+* Wed Jul 29 2015 Dave Airlie <airlied@redhat.com> - 13.0.2-10.20150211git8f0cf7c
+- 1.15 ABI rebuild
+
+* Fri Jun 19 2015 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 13.0.2-9.20150211git8f0cf7c
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_23_Mass_Rebuild
+
+* Tue Mar 03 2015 Dave Airlie <airlied@redhat.com> 13.0.2-8
+- removed hardened build
+
 * Wed Feb 11 2015 Hans de Goede <hdegoede@redhat.com> - 13.0.2-7.20150211git8f0cf7c
 - xserver 1.17 ABI rebuild
 - Update to git snapshot of the day to fix building with xserver 1.17
