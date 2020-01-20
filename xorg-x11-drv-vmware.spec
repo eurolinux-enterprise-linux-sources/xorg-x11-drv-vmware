@@ -13,7 +13,7 @@
 Summary:    Xorg X11 vmware video driver
 Name:	    xorg-x11-drv-vmware
 Version:    13.2.1
-Release:    1%{?gver}%{?dist}.1
+Release:    1%{?gver}%{?dist}
 URL:	    http://www.x.org
 License:    MIT
 Group:	    User Interface/X Hardware Support
@@ -23,8 +23,6 @@ Source0: %{tarball}-%{gitdate}.tar.bz2
 %else
 Source0:   ftp://ftp.x.org/pub/individual/driver/%{tarball}-%{version}.tar.bz2
 %endif
-
-Patch0: 0001-saa-Build-compatibility-with-xserver-1.20.patch
 
 ExclusiveArch: %{ix86} x86_64 ia64
 
@@ -41,7 +39,7 @@ Requires: Xorg %(xserver-sdk-abi-requires videodrv)
 X.Org X11 vmware video driver.
 
 %prep
-%autosetup -n %{tarball}-%{?gitdate:%{gitdate}}%{!?gitdate:%{version}} -p1
+%setup -q -n %{tarball}-%{?gitdate:%{gitdate}}%{!?gitdate:%{version}}
 
 %build
 autoreconf -v --install || exit 1
@@ -60,9 +58,6 @@ find $RPM_BUILD_ROOT -regex ".*\.la$" | xargs rm -f --
 %{_mandir}/man4/vmware.4*
 
 %changelog
-* Wed May 30 2018 Adam Jackson <ajax@redhat.com> - 13.2.1-1.1
-- Rebuild for xserver 1.20
-
 * Mon Jan  9 2017 Hans de Goede <hdegoede@redhat.com> - 13.2.1-1
 - New upstream bug-fix release 13.2.1
 
