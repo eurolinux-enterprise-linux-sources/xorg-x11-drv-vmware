@@ -70,11 +70,11 @@ static const float bt_709[] = {
 static Atom xvBrightness, xvContrast, xvSaturation, xvHue;
 
 #define NUM_TEXTURED_ATTRIBUTES 4
-static XF86AttributeRec TexturedAttributes[NUM_TEXTURED_ATTRIBUTES] = {
-   {XvSettable | XvGettable, -1000, 1000, "XV_BRIGHTNESS"},
-   {XvSettable | XvGettable, -1000, 1000, "XV_CONTRAST"},
-   {XvSettable | XvGettable, -1000, 1000, "XV_SATURATION"},
-   {XvSettable | XvGettable, -1000, 1000, "XV_HUE"}
+static const XF86AttributeRec TexturedAttributes[NUM_TEXTURED_ATTRIBUTES] = {
+    {XvSettable | XvGettable, -1000, 1000, "XV_BRIGHTNESS"},
+    {XvSettable | XvGettable, -1000, 1000, "XV_CONTRAST"},
+    {XvSettable | XvGettable, -1000, 1000, "XV_SATURATION"},
+    {XvSettable | XvGettable, -1000, 1000, "XV_HUE"}
 };
 
 #define NUM_FORMATS 3
@@ -111,8 +111,13 @@ struct xorg_xv_port_priv {
     int hue;
 
     int current_set;
-    struct vmwgfx_dmabuf *bounce[2][3];
-    struct xa_surface *yuv[3];
+    struct xa_surface *yuv[2][3];
+
+    struct xa_surface *bounce;
+    struct xa_box bounce_box;
+    struct xa_picture *src_pic;
+    struct xa_picture *dst_pic;
+    struct xa_composite *comp;
 
     int drm_fd;
 
@@ -179,6 +184,27 @@ vmwgfx_update_conversion_matrix(struct xorg_xv_port_priv *priv)
     cm[15] = 1.f;
 }
 
+/**
+ * vmwgfx_video_free_comp - free members used for composite bounce blit
+ *
+ * @priv: Pointer to the port private
+ *
+ * Frees any port priv resources allocated for a composite bounce blit.
+ */
+static void
+vmwgfx_video_free_comp(struct xorg_xv_port_priv *priv)
+{
+    if (priv->dst_pic)
+	free(priv->dst_pic);
+    if (priv->src_pic)
+	free(priv->src_pic);
+    if (priv->comp)
+	free(priv->comp);
+
+    priv->dst_pic = NULL;
+    priv->src_pic = NULL;
+    priv->comp = NULL;
+}
 
 static void
 stop_video(ScrnInfoPtr pScrn, pointer data, Bool shutdown)
@@ -196,16 +222,17 @@ stop_video(ScrnInfoPtr pScrn, pointer data, Bool shutdown)
 
        xa_fence_destroy(priv->fence);
        priv->fence = NULL;
+       vmwgfx_video_free_comp(priv);
 
        for (i=0; i<3; ++i) {
-	   if (priv->yuv[i]) {
-	       xa_surface_destroy(priv->yuv[i]);
-	       priv->yuv[i] = NULL;
-	   }
 	   for (j=0; j<2; ++j) {
-	       if (priv->bounce[j][i]) {
-		   vmwgfx_dmabuf_destroy(priv->bounce[j][i]);
-		   priv->bounce[0][i] = NULL;
+	       if (priv->yuv[i]) {
+		   xa_surface_destroy(priv->yuv[j][i]);
+		   priv->yuv[j][i] = NULL;
+	       }
+	       if (priv->bounce) {
+		   xa_surface_destroy(priv->bounce);
+		   priv->bounce = NULL;
 	       }
 	   }
        }
@@ -297,11 +324,9 @@ static int
 check_yuv_surfaces(struct xorg_xv_port_priv *priv,  int id,
 		   int width, int height)
 {
-    struct xa_surface **yuv = priv->yuv;
-    struct vmwgfx_dmabuf **bounce = priv->bounce[priv->current_set];
+    struct xa_surface **yuv = priv->yuv[priv->current_set];
     int ret = 0;
     int i;
-    size_t size;
 
     for (i=0; i<3; ++i) {
 
@@ -334,21 +359,176 @@ check_yuv_surfaces(struct xorg_xv_port_priv *priv,  int id,
 	if (ret || !yuv[i])
 	    return BadAlloc;
 
-	size = width * height;
-
-	if (bounce[i] && (bounce[i]->size < size ||
-			  bounce[i]->size > 2*size)) {
-	    vmwgfx_dmabuf_destroy(bounce[i]);
-	    bounce[i] = NULL;
-	}
-
-	if (!bounce[i]) {
-	    bounce[i] = vmwgfx_dmabuf_alloc(priv->drm_fd, size);
-	    if (!bounce[i])
-		return BadAlloc;
-	}
     }
     return Success;
+}
+
+
+/**
+ * vmwgfx_video_setup_comp - Set up port priv members for a composite
+ * bounce blit
+ *
+ * @priv: Pointer to the port priv.
+ * @format: XA format of the destination drawable surface.
+ *
+ * Tries to allocate and set up port priv resources to perform a composite
+ * bounce blit (except the bounce surface itself). On failure, all resources
+ * are freed. On success, TRUE is returned and @priv::comp is non-NULL. If
+ * resources are already allocated, update them for the current @format.
+ */
+static Bool
+vmwgfx_video_setup_comp(struct xorg_xv_port_priv *priv, enum xa_formats format)
+{
+    const struct xa_composite_allocation *alloc;
+    struct xa_picture *pic;
+
+    if (priv->comp) {
+	if (priv->src_pic->pict_format != format) {
+	    priv->src_pic->pict_format = format;
+	    priv->dst_pic->pict_format = format;
+	    if (xa_composite_check_accelerated(priv->comp) != XA_ERR_NONE) {
+		vmwgfx_video_free_comp(priv);
+		return FALSE;
+	    }
+	}
+	return TRUE;
+    }
+
+    alloc = xa_composite_allocation();
+    priv->comp = calloc(1, alloc->xa_composite_size);
+    priv->src_pic = calloc(1, alloc->xa_picture_size);
+    priv->dst_pic = calloc(1, alloc->xa_picture_size);
+
+    if (!priv->comp || !priv->src_pic || !priv->dst_pic) {
+	vmwgfx_video_free_comp(priv);
+	return FALSE;
+    }
+
+    pic = priv->src_pic;
+    pic->pict_format = format;
+    pic->wrap = xa_wrap_clamp_to_border;
+    pic->filter = xa_filter_linear;
+
+    *priv->dst_pic = *pic;
+
+    priv->comp->src = priv->src_pic;
+    priv->comp->dst = priv->dst_pic;
+    priv->comp->op = xa_op_src;
+    priv->comp->no_solid = 1;
+
+    if (xa_composite_check_accelerated(priv->comp) != XA_ERR_NONE) {
+	vmwgfx_video_free_comp(priv);
+	return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
+ * vmwgfx_video_setup_coord_matrix - Set up a bounce - to destination
+ * transformation matrix
+ *
+ * @src_x: Upper left corner of source image as given to putImage.
+ * @src_y: Upper left corner of source image as given to putImage.
+ * @src_w: Width of source image.
+ * @src_h: Height of source image.
+ * @dst_x: Upper left corner of destination image as given to putImage.
+ * @dst_y: Upper left corner of destination image as given to putImage.
+ * @dst_w: Width of destination image.
+ * @dst_h: Height of destination image.
+ * @bounce_w: Width of bounce surface.
+ * @bounce_h: Height of bounce surface.
+ * @mat: Pointer to transformation matrix.
+ *
+ * Computes a transformation matrix that can be used by the XA composite API
+ * to transform between the destination coordinate space and the bounce
+ * surface coordinate space. Scaling and translation.
+ */
+static void
+vmwgfx_video_setup_coord_matrix(int src_x, int src_y, int src_w, int src_h,
+				int dst_x, int dst_y, int dst_w, int dst_h,
+				int bounce_w, int bounce_h,
+				float *mat)
+{
+    if (dst_w == 0 || dst_h == 0 || src_w == 0 || src_h == 0) {
+	mat[0] = mat[6] = 0.;
+	mat[4] = mat[7] = 0.;
+	mat[8] = 1.f;
+	return;
+    }
+
+    mat[0] = (float) bounce_w / (float) dst_w;
+    mat[6] = (float) src_x * (float) bounce_w / (float) src_w -
+      (float) dst_x * mat[0];
+    mat[4] = (float) bounce_h / (float) dst_h;
+    mat[7] = (float) src_y * (float) bounce_h / (float) src_h -
+      (float) dst_y * mat[4];
+    mat[8] = 1.f;
+}
+
+/**
+ * vmwgfx_video_bounce_surface: (Re)Allocate a bounce surface if desired.
+ *
+ * @priv: Pointer to the port private.
+ * @d_with: Width of destination image.
+ * @d_height: Height of destination image.
+ * @width: Width of source video image.
+ * @height: Height of source video image.
+ * @dst_format: Format of destination drawable surface.
+ *
+ * If the destination video image is a suitable factor larger than the source
+ * video image. Allocate a bounce RGB surface that will be the target of the
+ * more expensive color conversion blit, and source of the scaling blit.
+ */
+static Bool
+vmwgfx_video_bounce_surface(struct xorg_xv_port_priv *priv,
+			    int d_width, int d_height,
+			    int width, int height,
+			    enum xa_formats dst_format)
+{
+    float bounce_area, dst_area;
+
+    if (d_width < width)
+	width = d_width;
+
+    if (d_height < height)
+	height = d_height;
+
+    bounce_area = (float) width * (float) height;
+    dst_area = (float) d_width * (float) d_height;
+
+    if (dst_area > bounce_area * 1.5f &&
+	vmwgfx_video_setup_comp(priv, dst_format)) {
+
+	if (!priv->bounce) {
+	    priv->bounce = xa_surface_create(priv->xat, width, height,
+					     xa_format_depth(dst_format),
+					     xa_format_type(dst_format),
+					     dst_format, XA_FLAG_RENDER_TARGET);
+	} else {
+	    if (xa_surface_redefine(priv->bounce, width, height,
+				    xa_format_depth(dst_format),
+				    xa_format_type(dst_format),
+				    dst_format,
+				    XA_FLAG_RENDER_TARGET, 0) != XA_ERR_NONE) {
+		xa_surface_destroy(priv->bounce);
+		priv->bounce = NULL;
+	    }
+	}
+
+    } else {
+	xa_surface_destroy(priv->bounce);
+	priv->bounce = NULL;
+    }
+
+    if (priv->bounce) {
+	priv->bounce_box.x1 = 0;
+	priv->bounce_box.x2 = width;
+	priv->bounce_box.y1 = 0;
+	priv->bounce_box.y2 = height;
+    }
+
+    return TRUE;
 }
 
 static int
@@ -413,28 +593,20 @@ copy_packed_data(ScrnInfoPtr pScrn,
                  unsigned short w, unsigned short h)
 {
     int i;
-   struct vmwgfx_dmabuf **bounce = port->bounce[port->current_set];
+   struct xa_surface **yuv = port->yuv[port->current_set];
    char *ymap, *vmap, *umap;
    unsigned char y1, y2, u, v;
    int yidx, uidx, vidx;
    int y_array_size = w * h;
    int ret = BadAlloc;
 
-   /*
-    * Here, we could use xa_surface_[map|unmap], but given the size of
-    * the yuv textures, that could stress the xa tracker dma buffer pool,
-    * particularaly with multiple videos rendering simultaneously.
-    *
-    * Instead, cheat and allocate vmwgfx dma buffers directly.
-    */
-
-   ymap = (char *)vmwgfx_dmabuf_map(bounce[0]);
+   ymap = xa_surface_map(port->r, yuv[0], XA_MAP_WRITE);
    if (!ymap)
        return BadAlloc;
-   umap = (char *)vmwgfx_dmabuf_map(bounce[1]);
+   umap = xa_surface_map(port->r, yuv[1], XA_MAP_WRITE);
    if (!umap)
        goto out_no_umap;
-   vmap = (char *)vmwgfx_dmabuf_map(bounce[2]);
+   vmap = xa_surface_map(port->r, yuv[2], XA_MAP_WRITE);
    if (!vmap)
        goto out_no_vmap;
 
@@ -444,16 +616,16 @@ copy_packed_data(ScrnInfoPtr pScrn,
    switch (id) {
    case FOURCC_YV12: {
       int pitches[3], offsets[3];
-      unsigned char *y, *u, *v;
+      unsigned char *yp, *up, *vp;
       query_image_attributes(pScrn, FOURCC_YV12,
                              &w, &h, pitches, offsets);
 
-      y = buf + offsets[0];
-      v = buf + offsets[1];
-      u = buf + offsets[2];
-      memcpy(ymap, y, w*h);
-      memcpy(vmap, v, w*h/4);
-      memcpy(umap, u, w*h/4);
+      yp = buf + offsets[0];
+      vp = buf + offsets[1];
+      up = buf + offsets[2];
+      memcpy(ymap, yp, w*h);
+      memcpy(vmap, vp, w*h/4);
+      memcpy(umap, up, w*h/4);
       break;
    }
    case FOURCC_UYVY:
@@ -493,64 +665,11 @@ copy_packed_data(ScrnInfoPtr pScrn,
    }
 
    ret = Success;
-   vmwgfx_dmabuf_unmap(bounce[2]);
+   xa_surface_unmap(yuv[2]);
   out_no_vmap:
-   vmwgfx_dmabuf_unmap(bounce[1]);
+   xa_surface_unmap(yuv[1]);
   out_no_umap:
-   vmwgfx_dmabuf_unmap(bounce[0]);
-
-   if (ret == Success) {
-       struct xa_surface *srf;
-       struct vmwgfx_dmabuf *buf;
-       uint32_t handle;
-       unsigned int stride;
-       BoxRec box;
-       RegionRec reg;
-
-       box.x1 = 0;
-       box.x2 = w;
-       box.y1 = 0;
-       box.y2 = h;
-
-       REGION_INIT(pScrn->pScreen, &reg, &box, 1);
-
-       for (i=0; i<3; ++i) {
-	   srf = port->yuv[i];
-	   buf = bounce[i];
-
-	   if (i == 1) {
-	       switch(id) {
-	       case FOURCC_YV12:
-		   h /= 2;
-		   /* Fall through */
-	       case FOURCC_YUY2:
-	       case FOURCC_UYVY:
-		   w /= 2;
-		   break;
-	       default:
-		   break;
-	       }
-
-	       box.x1 = 0;
-	       box.x2 = w;
-	       box.y1 = 0;
-	       box.y2 = h;
-
-	       REGION_RESET(pScrn->pScreen, &reg, &box);
-	   }
-
-	   if (xa_surface_handle(srf, &handle, &stride) != 0) {
-	       ret = BadAlloc;
-	       break;
-	   }
-
-	   if (vmwgfx_dma(0, 0, &reg, buf, w, handle, 1) != 0) {
-	       ret = BadAlloc;
-	       break;
-	   }
-       }
-       REGION_UNINIT(pScrn->pScreen, &reg);
-   }
+   xa_surface_unmap(yuv[0]);
 
    return ret;
 }
@@ -561,6 +680,7 @@ display_video(ScreenPtr pScreen, struct xorg_xv_port_priv *pPriv, int id,
               RegionPtr dstRegion,
               int src_x, int src_y, int src_w, int src_h,
               int dst_x, int dst_y, int dst_w, int dst_h,
+	      int width, int height,
               PixmapPtr pPixmap)
 {
     struct vmwgfx_saa_pixmap *vpix = vmwgfx_saa_pixmap(pPixmap);
@@ -602,14 +722,72 @@ display_video(ScreenPtr pScreen, struct xorg_xv_port_priv *pPriv, int id,
        pPriv->fence = NULL;
    }
 
+   (void) vmwgfx_video_bounce_surface(pPriv, dst_w, dst_h, width, height,
+				      xa_surface_format(vpix->hw));
+
    DamageRegionAppend(&pPixmap->drawable, dstRegion);
 
-   blit_ret = xa_yuv_planar_blit(pPriv->r, src_x, src_y, src_w, src_h,
-				 dst_x, dst_y, dst_w, dst_h,
-				 (struct xa_box *)REGION_RECTS(dstRegion),
-				 REGION_NUM_RECTS(dstRegion),
-				 pPriv->cm,
-				 vpix->hw, pPriv->yuv);
+   if (pPriv->bounce) {
+       BoxPtr b;
+       int i;
+
+       /*
+	* If we have a bounce buffer, First perform a (potentially down-
+	* scaling) color conversion blit with an expensive shader.
+	*/
+       blit_ret = xa_yuv_planar_blit(pPriv->r, 0, 0, src_w, src_h,
+				     src_x, src_y,
+				     pPriv->bounce_box.x2,
+				     pPriv->bounce_box.y2,
+				     &pPriv->bounce_box, 1,
+				     pPriv->cm,
+				     pPriv->bounce,
+				     pPriv->yuv[pPriv->current_set]);
+
+       if (blit_ret)
+	   goto out_blit;
+
+       /*
+	* Then an upscaling blit with a cheap shader. Note that we never
+	* scale up a dimenstion that was previously downscaled in the color
+	* conversion blit.
+	*/
+       pPriv->src_pic->srf = pPriv->bounce;
+       pPriv->dst_pic->srf = vpix->hw;
+       vmwgfx_video_setup_coord_matrix(src_x, src_y, src_w, src_h,
+				       dst_x, dst_y, dst_w, dst_h,
+				       pPriv->bounce_box.x2,
+				       pPriv->bounce_box.y2,
+				       pPriv->src_pic->transform);
+       pPriv->src_pic->has_transform = 1;
+
+       if (xa_composite_prepare(pPriv->r, pPriv->comp) != XA_ERR_NONE) {
+	   blit_ret = 1;
+	   goto out_blit;
+       }
+
+       b =  REGION_RECTS(dstRegion);
+       for (i = 0; i < REGION_NUM_RECTS(dstRegion); ++i, ++b) {
+	       xa_composite_rect(pPriv->r, b->x1, b->y1, 0, 0,
+				 b->x1, b->y1, b->x2 - b->x1,
+				 b->y2 - b->y1);
+       }
+
+       xa_composite_done(pPriv->r);
+   } else {
+       /*
+	* Perform color conversion and scaling in the same blit.
+	*/
+       blit_ret = xa_yuv_planar_blit(pPriv->r, src_x, src_y, src_w, src_h,
+				     dst_x, dst_y, dst_w, dst_h,
+				     (struct xa_box *)REGION_RECTS(dstRegion),
+				     REGION_NUM_RECTS(dstRegion),
+				     pPriv->cm,
+				     vpix->hw,
+				     pPriv->yuv[pPriv->current_set ]);
+   }
+
+  out_blit:
 
    saa_pixmap_dirty(pPixmap, TRUE, dstRegion);
    DamageRegionProcessPending(&pPixmap->drawable);
@@ -677,7 +855,8 @@ put_image(ScrnInfoPtr pScrn,
    display_video(pScrn->pScreen, pPriv, id, clipBoxes,
                  src_x, src_y, src_w, src_h,
                  drw_x, drw_y,
-                 drw_w, drw_h, pPixmap);
+                 drw_w, drw_h,
+		 width, height, pPixmap);
 
    pPriv->current_set = (pPriv->current_set + 1) & 1;
    return Success;

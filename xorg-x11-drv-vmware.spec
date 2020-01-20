@@ -1,8 +1,8 @@
 %define tarball xf86-video-vmware
 %define moduledir %(pkg-config xorg-server --variable=moduledir )
 %define driverdir	%{moduledir}/drivers
-#define gitdate 20130109
-%define gitversion adf375f3
+%define gitdate 20150211
+%define gitversion 8f0cf7c
 
 %if 0%{?gitdate}
 %define gver .%{gitdate}git%{gitversion}
@@ -10,7 +10,7 @@
 
 Summary:    Xorg X11 vmware video driver
 Name:	    xorg-x11-drv-vmware
-Version:    13.0.1
+Version:    13.0.2
 Release:    7%{?gver}%{?dist}
 URL:	    http://www.x.org
 License:    MIT
@@ -22,8 +22,6 @@ Source0: %{tarball}-%{gitdate}.tar.bz2
 Source0:   ftp://ftp.x.org/pub/individual/driver/%{tarball}-%{version}.tar.bz2
 %endif
 
-Patch0: vmware-13.0.1-xserver-1.15-compat.patch
-
 ExclusiveArch: %{ix86} x86_64 ia64
 
 %if 0%{?gitdate}
@@ -31,18 +29,16 @@ BuildRequires: autoconf automake libtool
 %endif
 BuildRequires: xorg-x11-server-devel >= 1.10.99.902
 BuildRequires: libdrm-devel pkgconfig(xext) pkgconfig(x11)
-BuildRequires: mesa-libxatracker-devel >= 8.0.1-4
+BuildRequires: mesa-libxatracker-devel >= 10.2.5-3
 
 Requires: Xorg %(xserver-sdk-abi-requires ansic)
 Requires: Xorg %(xserver-sdk-abi-requires videodrv)
-Requires: libxatracker >= 8.0.1-4
 
 %description 
 X.Org X11 vmware video driver.
 
 %prep
 %setup -q -n %{tarball}-%{?gitdate:%{gitdate}}%{!?gitdate:%{version}}
-%patch0 -p1 -b .compat
 
 %build
 %if 0%{?gitdate}
@@ -52,28 +48,53 @@ autoreconf -v --install || exit 1
 make %{?_smp_mflags}
 
 %install
-rm -rf $RPM_BUILD_ROOT
-
-make install DESTDIR=$RPM_BUILD_ROOT
+%make_install
 
 # FIXME: Remove all libtool archives (*.la) from modules directory.  This
 # should be fixed in upstream Makefile.am or whatever.
 find $RPM_BUILD_ROOT -regex ".*\.la$" | xargs rm -f --
 
-%clean
-rm -rf $RPM_BUILD_ROOT
-
 %files
-%defattr(-,root,root,-)
 %{driverdir}/vmware_drv.so
 %{_mandir}/man4/vmware.4*
 
 %changelog
-* Wed Jan 15 2014 Adam Jackson <ajax@redhat.com> - 13.0.1-7
+* Wed Feb 11 2015 Hans de Goede <hdegoede@redhat.com> - 13.0.2-7.20150211git8f0cf7c
+- xserver 1.17 ABI rebuild
+- Update to git snapshot of the day to fix building with xserver 1.17
+
+* Mon Aug 18 2014 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 13.0.2-6.20140613git82c9b0c
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_21_22_Mass_Rebuild
+
+* Mon Jun 16 2014 Hans de Goede <hdegoede@redhat.com> - 13.0.2-5.20140613git82c9b0c
+- xserver 1.15.99.903 ABI rebuild
+
+* Fri Jun 13 2014 Hans de Goede <hdegoede@redhat.com> - 13.0.2-4.20140613git82c9b0c
+- Snapshot from git master to fix render accel not working (rhbz#1077453)
+
+* Sun Jun 08 2014 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 13.0.2-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_21_Mass_Rebuild
+
+* Tue May 13 2014 Hans de Goede <hdegoede@redhat.com> - 13.0.2-2
+- Add server managed fd support
+
+* Mon Apr 28 2014 Hans de Goede <hdegoede@redhat.com> - 13.0.2-1
+- vmware 13.0.2
+
+* Mon Apr 28 2014 Hans de Goede <hdegoede@redhat.com> - 13.0.1-10.20131207gita40cbd7b
+- xserver 1.15.99-20140428 git snapshot ABI rebuild
+
+* Mon Jan 13 2014 Adam Jackson <ajax@redhat.com> - 13.0.1-9.20131207gita40cbd7b
 - 1.15 ABI rebuild
 
-* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 13.0.1-6
-- Mass rebuild 2013-12-27
+* Tue Dec 17 2013 Adam Jackson <ajax@redhat.com> - 13.0.1-8.20131207gita40cbd7b
+- 1.15RC4 ABI rebuild
+
+* Sat Dec 07 2013 Dave Airlie <airlied@redhat.com> 13.0.1-7
+- snapshot master to build against latest mesa
+
+* Wed Nov 20 2013 Adam Jackson <ajax@redhat.com> - 13.0.1-6
+- 1.15RC2 ABI rebuild
 
 * Wed Nov 06 2013 Adam Jackson <ajax@redhat.com> - 13.0.1-5
 - 1.15RC1 ABI rebuild
