@@ -10,8 +10,8 @@
 
 Summary:    Xorg X11 vmware video driver
 Name:	    xorg-x11-drv-vmware
-Version:    13.0.2
-Release:    1%{?gver}%{?dist}
+Version:    13.0.1
+Release:    7%{?gver}%{?dist}
 URL:	    http://www.x.org
 License:    MIT
 Group:	    User Interface/X Hardware Support
@@ -22,7 +22,7 @@ Source0: %{tarball}-%{gitdate}.tar.bz2
 Source0:   ftp://ftp.x.org/pub/individual/driver/%{tarball}-%{version}.tar.bz2
 %endif
 
-Patch1: vmware-13.0.1-xv-fix.patch
+Patch0: vmware-13.0.1-xserver-1.15-compat.patch
 
 ExclusiveArch: %{ix86} x86_64 ia64
 
@@ -31,17 +31,18 @@ BuildRequires: autoconf automake libtool
 %endif
 BuildRequires: xorg-x11-server-devel >= 1.10.99.902
 BuildRequires: libdrm-devel pkgconfig(xext) pkgconfig(x11)
-BuildRequires: mesa-libxatracker-devel >= 10.2.5-3
+BuildRequires: mesa-libxatracker-devel >= 8.0.1-4
 
 Requires: Xorg %(xserver-sdk-abi-requires ansic)
 Requires: Xorg %(xserver-sdk-abi-requires videodrv)
+Requires: libxatracker >= 8.0.1-4
 
 %description 
 X.Org X11 vmware video driver.
 
 %prep
 %setup -q -n %{tarball}-%{?gitdate:%{gitdate}}%{!?gitdate:%{version}}
-%patch1 -p1 -b .xv
+%patch0 -p1 -b .compat
 
 %build
 %if 0%{?gitdate}
@@ -68,9 +69,6 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man4/vmware.4*
 
 %changelog
-* Tue Sep 09 2014 Adam Jackson <ajax@redhat.com> 13.0.2-1
-- vmware 13.0.2 plus an Xv fix from RHEL 6.6
-
 * Wed Jan 15 2014 Adam Jackson <ajax@redhat.com> - 13.0.1-7
 - 1.15 ABI rebuild
 

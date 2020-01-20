@@ -60,7 +60,7 @@ struct output_private
     Bool is_implicit;
 };
 
-static const char *output_enum_list[] = {
+static char *output_enum_list[] = {
     "Unknown",
     "VGA",
     "DVI",
